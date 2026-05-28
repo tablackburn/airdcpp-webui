@@ -3,13 +3,15 @@
 }
 
 .virtual-table .cell-wrapper.paused span,
-.virtual-table .cell-wrapper.paused .label {
+.virtual-table .cell-wrapper.paused .label,
+.virtual-table .cell-wrapper.paused a {
   color: gray !important;
 }
 
 .virtual-table .cell-wrapper.failed span,
 .virtual-table .cell-wrapper.failed .label,
 .virtual-table .cell-wrapper.failed a {
+  color: red;
   font-weight: bold !important;
 }
 
