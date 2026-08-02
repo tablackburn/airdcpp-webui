@@ -3,20 +3,15 @@ import * as API from '@/types/api';
 export interface TableSelectionState {
   selectedIds: Set<API.IdType>;
   selectedCount: number;
-  // When true, all items are selected except those in excludedIds
-  selectAllMode: boolean;
-  // Items explicitly deselected while in select-all mode
-  excludedIds: Set<API.IdType>;
 }
 
 export interface TableSelectionActions {
   // Toggle item selection; optionally provide item data for caching
   toggleItem: (id: API.IdType, itemData?: SelectableItem) => void;
-  // Toggle select-all mode on/off
-  setSelectAllMode: (enabled: boolean, totalCount: number) => void;
   clearSelection: () => void;
   isSelected: (id: API.IdType) => boolean;
-  selectItems: (ids: API.IdType[]) => void;
+  // Replace the selection with these items, caching their data
+  selectItems: (items: SelectableItem[]) => void;
   // Get cached item data (useful when items leave sparse store)
   getCachedItemData: <T extends SelectableItem>(id: API.IdType) => T | undefined;
   // Get all cached item data

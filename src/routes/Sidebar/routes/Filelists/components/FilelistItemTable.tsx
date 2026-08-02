@@ -99,9 +99,15 @@ const FilelistItemTable: React.FC<ListBrowserProps> = ({
     showBulkDownload,
     selectedItems,
     getTotalCount,
+    selectAll,
+    isSelectingAll,
     handleBulkDownloadClose,
     handleBulkActionClick,
-  } = useSelectionActions<API.FilelistItem>({ selection, store: FilelistViewStore });
+  } = useSelectionActions<API.FilelistItem>({
+    selection,
+    store: FilelistViewStore,
+    t: sessionT.t,
+  });
   const { clearSelection } = selection;
 
   const rowClassNameGetter = useCallback(
@@ -192,7 +198,14 @@ const FilelistItemTable: React.FC<ListBrowserProps> = ({
           width={40}
           columnKey="__selection"
           flexGrow={0}
-          header={<SelectionHeaderCell totalCountGetter={getTotalCount} />}
+          header={
+            <SelectionHeaderCell
+              totalCountGetter={getTotalCount}
+              onSelectAll={selectAll}
+              isSelectingAll={isSelectingAll}
+              t={sessionT.t}
+            />
+          }
           cell={<SelectionCheckboxCell />}
         />
         <Column

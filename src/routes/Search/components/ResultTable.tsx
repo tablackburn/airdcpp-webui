@@ -132,9 +132,15 @@ const ResultTable: React.FC<ResultTableProps> = ({
     showBulkDownload,
     selectedItems,
     getTotalCount,
+    selectAll,
+    isSelectingAll,
     handleBulkDownloadClose,
     handleBulkActionClick,
-  } = useSelectionActions<API.GroupedSearchResult>({ selection, store: SearchViewStore });
+  } = useSelectionActions<API.GroupedSearchResult>({
+    selection,
+    store: SearchViewStore,
+    t: searchT.t,
+  });
   const { clearSelection } = selection;
   const { translate } = searchT;
 
@@ -237,7 +243,14 @@ const ResultTable: React.FC<ResultTableProps> = ({
           width={40}
           columnKey="__selection"
           flexGrow={0}
-          header={<SelectionHeaderCell totalCountGetter={getTotalCount} />}
+          header={
+            <SelectionHeaderCell
+              totalCountGetter={getTotalCount}
+              onSelectAll={selectAll}
+              isSelectingAll={isSelectingAll}
+              t={searchT.t}
+            />
+          }
           cell={<SelectionCheckboxCell />}
         />
         <Column

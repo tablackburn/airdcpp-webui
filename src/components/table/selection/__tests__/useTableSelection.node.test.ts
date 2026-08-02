@@ -5,6 +5,8 @@ import { useTableSelection } from '../useTableSelection';
 // Helper to reduce boilerplate
 const setup = () => renderHook(() => useTableSelection());
 
+const item = (id: number) => ({ id, name: `Item ${id}` });
+
 describe('useTableSelection', () => {
   describe('initial state', () => {
     test('should have empty selection initially', () => {
@@ -12,12 +14,10 @@ describe('useTableSelection', () => {
 
       expect(result.current.selectedIds.size).toBe(0);
       expect(result.current.selectedCount).toBe(0);
-      expect(result.current.selectAllMode).toBe(false);
-      expect(result.current.excludedIds.size).toBe(0);
     });
   });
 
-  describe('toggleItem in normal mode', () => {
+  describe('toggleItem', () => {
     test('should add item to selection when toggled', () => {
       const { result } = setup();
 
@@ -61,286 +61,115 @@ describe('useTableSelection', () => {
       expect(result.current.isSelected(3)).toBe(true);
       expect(result.current.isSelected(4)).toBe(false);
     });
-  });
 
-  describe('selectAllMode', () => {
-    test('should enter select-all mode with total count', () => {
+    test('should cache supplied item data so it survives leaving the store', () => {
       const { result } = setup();
 
       act(() => {
-        result.current.setSelectAllMode(true, 100);
+        result.current.toggleItem(1, item(1));
       });
 
-      expect(result.current.selectAllMode).toBe(true);
-      expect(result.current.selectedCount).toBe(100);
-      expect(result.current.excludedIds.size).toBe(0);
+      expect(result.current.getCachedItemData(1)).toEqual(item(1));
     });
 
-    test('should clear previous selections when entering select-all mode', () => {
+    test('should drop cached data when an item is deselected', () => {
       const { result } = setup();
 
-      // First select some items manually
+      act(() => {
+        result.current.toggleItem(1, item(1));
+      });
       act(() => {
         result.current.toggleItem(1);
-        result.current.toggleItem(2);
       });
 
-      expect(result.current.selectedIds.size).toBe(2);
-
-      // Enter select-all mode
-      act(() => {
-        result.current.setSelectAllMode(true, 100);
-      });
-
-      expect(result.current.selectedIds.size).toBe(0);
-      expect(result.current.selectAllMode).toBe(true);
-      expect(result.current.selectedCount).toBe(100);
-    });
-
-    test('should exit select-all mode and clear all', () => {
-      const { result } = setup();
-
-      act(() => {
-        result.current.setSelectAllMode(true, 100);
-      });
-
-      act(() => {
-        result.current.setSelectAllMode(false, 0);
-      });
-
-      expect(result.current.selectAllMode).toBe(false);
-      expect(result.current.selectedCount).toBe(0);
-      expect(result.current.excludedIds.size).toBe(0);
-    });
-  });
-
-  describe('toggleItem in select-all mode', () => {
-    test('should add item to excluded list when toggled in select-all mode', () => {
-      const { result } = setup();
-
-      act(() => {
-        result.current.setSelectAllMode(true, 100);
-      });
-
-      act(() => {
-        result.current.toggleItem(5);
-      });
-
-      expect(result.current.excludedIds.has(5)).toBe(true);
-      expect(result.current.selectedCount).toBe(99);
-      expect(result.current.isSelected(5)).toBe(false);
-      expect(result.current.isSelected(1)).toBe(true); // Other items still selected
-    });
-
-    test('should remove item from excluded list when toggled again', () => {
-      const { result } = setup();
-
-      act(() => {
-        result.current.setSelectAllMode(true, 100);
-      });
-
-      act(() => {
-        result.current.toggleItem(5);
-      });
-
-      act(() => {
-        result.current.toggleItem(5);
-      });
-
-      expect(result.current.excludedIds.has(5)).toBe(false);
-      expect(result.current.selectedCount).toBe(100);
-      expect(result.current.isSelected(5)).toBe(true);
-    });
-
-    test('should handle multiple exclusions', () => {
-      const { result } = setup();
-
-      act(() => {
-        result.current.setSelectAllMode(true, 100);
-      });
-
-      act(() => {
-        result.current.toggleItem(1);
-        result.current.toggleItem(2);
-        result.current.toggleItem(3);
-      });
-
-      expect(result.current.excludedIds.size).toBe(3);
-      expect(result.current.selectedCount).toBe(97);
-      expect(result.current.isSelected(1)).toBe(false);
-      expect(result.current.isSelected(2)).toBe(false);
-      expect(result.current.isSelected(3)).toBe(false);
-      expect(result.current.isSelected(4)).toBe(true);
+      expect(result.current.getCachedItemData(1)).toBeUndefined();
     });
   });
 
   describe('selectItems', () => {
-    test('should select specific items', () => {
+    test('should select the supplied items and cache their data', () => {
       const { result } = setup();
 
       act(() => {
-        result.current.selectItems([1, 2, 3]);
+        result.current.selectItems([item(1), item(2), item(3)]);
       });
 
-      expect(result.current.selectedIds.size).toBe(3);
-      expect(result.current.isSelected(1)).toBe(true);
+      expect(result.current.selectedCount).toBe(3);
       expect(result.current.isSelected(2)).toBe(true);
-      expect(result.current.isSelected(3)).toBe(true);
+      expect(result.current.getCachedItemData(2)).toEqual(item(2));
+      expect(result.current.getItemDataCache().size).toBe(3);
     });
 
-    test('should exit select-all mode when selecting specific items', () => {
+    test('should replace any previous selection', () => {
       const { result } = setup();
 
       act(() => {
-        result.current.setSelectAllMode(true, 100);
+        result.current.toggleItem(9, item(9));
       });
-
       act(() => {
-        result.current.selectItems([1, 2]);
+        result.current.selectItems([item(1), item(2)]);
       });
 
-      expect(result.current.selectAllMode).toBe(false);
       expect(result.current.selectedIds.size).toBe(2);
-      expect(result.current.excludedIds.size).toBe(0);
+      expect(result.current.isSelected(9)).toBe(false);
+      expect(result.current.getCachedItemData(9)).toBeUndefined();
     });
 
-    test('should replace previous selection', () => {
+    test('should clear the selection when given an empty list', () => {
       const { result } = setup();
 
       act(() => {
-        result.current.selectItems([1, 2, 3]);
+        result.current.toggleItem(1, item(1));
       });
-
       act(() => {
-        result.current.selectItems([4, 5]);
+        result.current.selectItems([]);
       });
 
-      expect(result.current.selectedIds.size).toBe(2);
-      expect(result.current.isSelected(1)).toBe(false);
-      expect(result.current.isSelected(4)).toBe(true);
-      expect(result.current.isSelected(5)).toBe(true);
+      expect(result.current.selectedCount).toBe(0);
+      expect(result.current.getItemDataCache().size).toBe(0);
     });
   });
 
   describe('clearSelection', () => {
-    test('should clear normal selection', () => {
+    test('should clear the selection and the cache', () => {
       const { result } = setup();
 
       act(() => {
-        result.current.toggleItem(1);
-        result.current.toggleItem(2);
+        result.current.selectItems([item(1), item(2)]);
       });
+
+      expect(result.current.selectedCount).toBe(2);
 
       act(() => {
         result.current.clearSelection();
       });
 
+      expect(result.current.selectedCount).toBe(0);
       expect(result.current.selectedIds.size).toBe(0);
-      expect(result.current.selectedCount).toBe(0);
-    });
-
-    test('should clear select-all mode and exclusions', () => {
-      const { result } = setup();
-
-      act(() => {
-        result.current.setSelectAllMode(true, 100);
-        result.current.toggleItem(5);
-      });
-
-      act(() => {
-        result.current.clearSelection();
-      });
-
-      expect(result.current.selectAllMode).toBe(false);
-      expect(result.current.excludedIds.size).toBe(0);
-      expect(result.current.selectedCount).toBe(0);
+      expect(result.current.getItemDataCache().size).toBe(0);
     });
   });
 
   describe('isSelected', () => {
-    test('should return correct state in normal mode', () => {
+    test('should report only the selected ids', () => {
       const { result } = setup();
 
       act(() => {
         result.current.toggleItem(1);
+        result.current.toggleItem(3);
       });
 
       expect(result.current.isSelected(1)).toBe(true);
       expect(result.current.isSelected(2)).toBe(false);
-    });
-
-    test('should return correct state in select-all mode', () => {
-      const { result } = setup();
-
-      act(() => {
-        result.current.setSelectAllMode(true, 100);
-      });
-
-      act(() => {
-        result.current.toggleItem(5);
-      });
-
-      expect(result.current.isSelected(1)).toBe(true);
-      expect(result.current.isSelected(5)).toBe(false);
+      expect(result.current.isSelected(3)).toBe(true);
     });
   });
 
   describe('selectedCount', () => {
-    test('should count selected items in normal mode', () => {
+    test('should track the number of selected items', () => {
       const { result } = setup();
 
-      act(() => {
-        result.current.toggleItem(1);
-        result.current.toggleItem(2);
-        result.current.toggleItem(3);
-      });
-
-      expect(result.current.selectedCount).toBe(3);
-    });
-
-    test('should calculate count correctly in select-all mode', () => {
-      const { result } = setup();
-
-      act(() => {
-        result.current.setSelectAllMode(true, 100);
-      });
-
-      expect(result.current.selectedCount).toBe(100);
-
-      act(() => {
-        result.current.toggleItem(1);
-        result.current.toggleItem(2);
-      });
-
-      expect(result.current.selectedCount).toBe(98);
-    });
-
-    test('should not go below zero', () => {
-      const { result } = setup();
-
-      act(() => {
-        result.current.setSelectAllMode(true, 2);
-      });
-
-      act(() => {
-        result.current.toggleItem(1);
-        result.current.toggleItem(2);
-        result.current.toggleItem(3);
-        result.current.toggleItem(4);
-        result.current.toggleItem(5);
-      });
-
-      // Even with more exclusions than total, count should be 0
       expect(result.current.selectedCount).toBe(0);
-    });
-  });
-
-  describe('entity/view change behavior', () => {
-    test('should clear selection when entityId changes', () => {
-      const { result, rerender } = renderHook(
-        ({ entityId }) => useTableSelection({ entityId }),
-        { initialProps: { entityId: 1 } }
-      );
 
       act(() => {
         result.current.toggleItem(1);
@@ -349,41 +178,56 @@ describe('useTableSelection', () => {
 
       expect(result.current.selectedCount).toBe(2);
 
-      // Change entityId
+      act(() => {
+        result.current.toggleItem(1);
+      });
+
+      expect(result.current.selectedCount).toBe(1);
+    });
+  });
+
+  describe('entity/view change behavior', () => {
+    test('should clear selection when entityId changes', () => {
+      const { result, rerender } = renderHook(
+        ({ entityId }) => useTableSelection({ entityId }),
+        { initialProps: { entityId: 1 } },
+      );
+
+      act(() => {
+        result.current.toggleItem(1, item(1));
+        result.current.toggleItem(2, item(2));
+      });
+
+      expect(result.current.selectedCount).toBe(2);
+
       rerender({ entityId: 2 });
 
       expect(result.current.selectedCount).toBe(0);
-      expect(result.current.selectAllMode).toBe(false);
+      expect(result.current.getItemDataCache().size).toBe(0);
     });
 
     test('should clear selection when viewId changes', () => {
       const { result, rerender } = renderHook(
         ({ viewId }) => useTableSelection({ viewId }),
-        { initialProps: { viewId: 'view1' } }
+        { initialProps: { viewId: 'view1' } },
       );
 
       act(() => {
-        result.current.setSelectAllMode(true, 100);
+        result.current.selectItems([item(1), item(2), item(3)]);
       });
 
-      act(() => {
-        result.current.toggleItem(5);
-      });
+      expect(result.current.selectedCount).toBe(3);
 
-      expect(result.current.selectedCount).toBe(99);
-
-      // Change viewId
       rerender({ viewId: 'view2' });
 
       expect(result.current.selectedCount).toBe(0);
-      expect(result.current.selectAllMode).toBe(false);
-      expect(result.current.excludedIds.size).toBe(0);
+      expect(result.current.getItemDataCache().size).toBe(0);
     });
 
     test('should not clear selection when same entityId is passed', () => {
       const { result, rerender } = renderHook(
         ({ entityId }) => useTableSelection({ entityId }),
-        { initialProps: { entityId: 1 } }
+        { initialProps: { entityId: 1 } },
       );
 
       act(() => {
@@ -392,7 +236,6 @@ describe('useTableSelection', () => {
 
       expect(result.current.selectedCount).toBe(1);
 
-      // Rerender with same entityId
       rerender({ entityId: 1 });
 
       expect(result.current.selectedCount).toBe(1);

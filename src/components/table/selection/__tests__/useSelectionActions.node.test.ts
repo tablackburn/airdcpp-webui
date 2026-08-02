@@ -1,294 +1,278 @@
-import { describe, expect, test, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { useSelectionActions } from '../useSelectionActions';
-import { TableSelectionContextValue } from '../types';
+import { describe, expect, test, vi, beforeEach } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import * as React from 'react';
 
-// Mock item type for testing
+import { useSelectionActions } from '../useSelectionActions';
+import { MAX_SELECT_ALL_ITEMS } from '../constants';
+import { TableSelectionContextValue } from '../types';
+import { SocketContext } from '@/context/SocketContext';
+import { APISocket } from '@/services/SocketService';
+
+import NotificationActions from '@/actions/NotificationActions';
+
+vi.mock('@/actions/NotificationActions', () => ({
+  default: {
+    apiError: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
+
 interface TestItem {
   id: number;
   name: string;
 }
 
-// Helper to create mock items
 const createItems = (count: number): TestItem[] =>
   Array.from({ length: count }, (_, i) => ({ id: i + 1, name: `Item ${i + 1}` }));
 
-// Helper to create mock selection context
-// When items are provided, they populate the cache for normal mode selections
-const createMockSelection = <T extends { id: number }>(
+// Minimal translator: returns the supplied default value
+const t = ((_key: string, options?: { defaultValue?: string }) =>
+  options?.defaultValue ?? _key) as any;
+
+const createMockSelection = (
   overrides: Partial<TableSelectionContextValue> = {},
-  items: T[] = []
+  cachedItems: TestItem[] = [],
 ): TableSelectionContextValue => {
-  // Build cache from items - in real usage, cache is populated when checkboxes are clicked
-  const itemCache = new Map<number, T>();
-  items.forEach((item) => {
-    if (item) {
-      itemCache.set(item.id, item);
-    }
-  });
+  const itemCache = new Map<number, TestItem>();
+  cachedItems.forEach((item) => item && itemCache.set(item.id, item));
 
   return {
     selectedIds: new Set<number>(),
-    excludedIds: new Set<number>(),
-    selectAllMode: false,
     selectedCount: 0,
     toggleItem: vi.fn(),
     selectItems: vi.fn(),
-    setSelectAllMode: vi.fn(),
     clearSelection: vi.fn(),
     isSelected: vi.fn(() => false),
-    getCachedItemData: vi.fn((id: number) => itemCache.get(id)) as TableSelectionContextValue['getCachedItemData'],
-    getItemDataCache: vi.fn(() => itemCache) as TableSelectionContextValue['getItemDataCache'],
+    getCachedItemData: vi.fn((id: number) =>
+      itemCache.get(id),
+    ) as TableSelectionContextValue['getCachedItemData'],
+    getItemDataCache: vi.fn(
+      () => itemCache,
+    ) as TableSelectionContextValue['getItemDataCache'],
     ...overrides,
   };
 };
 
-// Helper to create mock store
-const createMockStore = (items: TestItem[] = [], rowCount?: number) => ({
+const createMockStore = (rowCount: number, items: TestItem[] = []) => ({
+  viewUrl: 'search/1',
+  rowCount,
   items,
-  rowCount: rowCount ?? items.length,
 });
 
-// Setup helper to reduce boilerplate in tests
-const setup = (
-  selectionOverrides: Partial<TableSelectionContextValue> = {},
-  items: TestItem[] = [],
-  rowCount?: number,
-) => {
-  // Pass items to createMockSelection so the cache is populated
-  const selection = createMockSelection(selectionOverrides, items);
-  const store = createMockStore(items, rowCount);
-  return renderHook(() => useSelectionActions<TestItem>({ selection, store }));
+const setup = ({
+  rowCount = 10,
+  storeItems = [],
+  cachedItems = [],
+  selectionOverrides = {},
+  socketGet = vi.fn(async () => [] as TestItem[]),
+}: {
+  rowCount?: number;
+  storeItems?: TestItem[];
+  cachedItems?: TestItem[];
+  selectionOverrides?: Partial<TableSelectionContextValue>;
+  socketGet?: ReturnType<typeof vi.fn>;
+} = {}) => {
+  const selection = createMockSelection(selectionOverrides, cachedItems);
+  const store = createMockStore(rowCount, storeItems);
+  const socket = { get: socketGet } as unknown as APISocket;
+
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(SocketContext.Provider, { value: socket }, children);
+
+  const rendered = renderHook(
+    () => useSelectionActions<TestItem>({ selection, store, t }),
+    { wrapper },
+  );
+
+  return { ...rendered, selection, store, socketGet };
 };
 
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
 describe('useSelectionActions', () => {
-  describe('initial state', () => {
-    test('should have showBulkDownload as false initially', () => {
-      const { result } = setup();
-      expect(result.current.showBulkDownload).toBe(false);
+  describe('select-all availability', () => {
+    test(`allows select-all at exactly ${MAX_SELECT_ALL_ITEMS} rows`, () => {
+      const { result } = setup({ rowCount: MAX_SELECT_ALL_ITEMS });
+      expect(result.current.canSelectAll()).toBe(true);
     });
 
-    test('should have empty selectedItems when no selection', () => {
-      const { result } = setup({}, createItems(5));
+    test(`disallows select-all at ${MAX_SELECT_ALL_ITEMS + 1} rows`, () => {
+      const { result } = setup({ rowCount: MAX_SELECT_ALL_ITEMS + 1 });
+      expect(result.current.canSelectAll()).toBe(false);
+    });
+
+    test('disallows select-all for an empty view', () => {
+      const { result } = setup({ rowCount: 0 });
+      expect(result.current.canSelectAll()).toBe(false);
+    });
+  });
+
+  describe('selectAll', () => {
+    test('selects rows fetched from the API, not the sparse store', async () => {
+      // The store holds only a screenful; the server has all 30 rows.
+      // This is the bug being fixed: selecting from store.items silently
+      // dropped everything outside the loaded window.
+      const storeItems = createItems(5);
+      const serverItems = createItems(30);
+      const socketGet = vi.fn(async () => serverItems);
+
+      const { result, selection, socketGet: get } = setup({
+        rowCount: 30,
+        storeItems,
+        socketGet,
+      });
+
+      await act(async () => {
+        await result.current.selectAll();
+      });
+
+      expect(get).toHaveBeenCalledWith('search/1/items/0/30');
+      expect(selection.selectItems).toHaveBeenCalledWith(serverItems);
+      expect(selection.selectItems).not.toHaveBeenCalledWith(storeItems);
+    });
+
+    test('does nothing when the view exceeds the cap', async () => {
+      const { result, selection, socketGet } = setup({
+        rowCount: MAX_SELECT_ALL_ITEMS + 1,
+      });
+
+      await act(async () => {
+        await result.current.selectAll();
+      });
+
+      expect(socketGet).not.toHaveBeenCalled();
+      expect(selection.selectItems).not.toHaveBeenCalled();
+    });
+
+    test('does nothing for an empty view', async () => {
+      const { result, selection, socketGet } = setup({ rowCount: 0 });
+
+      await act(async () => {
+        await result.current.selectAll();
+      });
+
+      expect(socketGet).not.toHaveBeenCalled();
+      expect(selection.selectItems).not.toHaveBeenCalled();
+    });
+
+    test('leaves the selection untouched and reports the error when the fetch fails', async () => {
+      const socketGet = vi.fn(async () => {
+        throw new Error('Network down');
+      });
+      const { result, selection } = setup({ rowCount: 10, socketGet });
+
+      await act(async () => {
+        await result.current.selectAll();
+      });
+
+      expect(selection.selectItems).not.toHaveBeenCalled();
+      expect(selection.clearSelection).not.toHaveBeenCalled();
+      expect(NotificationActions.apiError).toHaveBeenCalled();
+    });
+
+    test('reports progress while fetching and clears it afterwards', async () => {
+      let resolveFetch: (items: TestItem[]) => void = () => {};
+      const socketGet = vi.fn(
+        () =>
+          new Promise<TestItem[]>((resolve) => {
+            resolveFetch = resolve;
+          }),
+      );
+
+      const { result } = setup({ rowCount: 10, socketGet });
+
+      expect(result.current.isSelectingAll).toBe(false);
+
+      let pending: Promise<void>;
+      act(() => {
+        pending = result.current.selectAll();
+      });
+
+      await waitFor(() => expect(result.current.isSelectingAll).toBe(true));
+
+      await act(async () => {
+        resolveFetch(createItems(10));
+        await pending;
+      });
+
+      expect(result.current.isSelectingAll).toBe(false);
+    });
+
+    test('clears the progress flag even when the fetch fails', async () => {
+      const socketGet = vi.fn(async () => {
+        throw new Error('Network down');
+      });
+      const { result } = setup({ rowCount: 10, socketGet });
+
+      await act(async () => {
+        await result.current.selectAll();
+      });
+
+      expect(result.current.isSelectingAll).toBe(false);
+    });
+  });
+
+  describe('selectedItems', () => {
+    test('resolves selected ids from the cache', () => {
+      const items = createItems(5);
+      const { result } = setup({
+        cachedItems: items,
+        selectionOverrides: { selectedIds: new Set([1, 3, 5]) },
+      });
+
+      expect(result.current.selectedItems.map((i) => i.id)).toEqual([1, 3, 5]);
+    });
+
+    test('is empty when nothing is selected', () => {
+      const { result } = setup({ cachedItems: createItems(5) });
       expect(result.current.selectedItems).toEqual([]);
+    });
+
+    test('skips ids that have no cached data', () => {
+      const { result } = setup({
+        cachedItems: createItems(3),
+        selectionOverrides: { selectedIds: new Set([1, 99]) },
+      });
+
+      expect(result.current.selectedItems.map((i) => i.id)).toEqual([1]);
+    });
+
+    test('resolves items that have left the sparse store', () => {
+      // Cache holds items the store no longer has loaded
+      const { result } = setup({
+        rowCount: 500,
+        storeItems: [],
+        cachedItems: createItems(3),
+        selectionOverrides: { selectedIds: new Set([1, 2, 3]) },
+      });
+
+      expect(result.current.selectedItems).toHaveLength(3);
     });
   });
 
   describe('getTotalCount', () => {
-    test('should return store rowCount', () => {
-      const { result } = setup({}, createItems(5), 100);
+    test('returns the store row count', () => {
+      const { result } = setup({ rowCount: 100 });
       expect(result.current.getTotalCount()).toBe(100);
     });
 
-    test('should return 0 when rowCount is undefined', () => {
+    test('returns 0 when the row count is unknown', () => {
       const selection = createMockSelection();
-      const store = { items: [] };
-      const { result } = renderHook(() =>
-        useSelectionActions<TestItem>({ selection, store })
+      const socket = { get: vi.fn() } as unknown as APISocket;
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(SocketContext.Provider, { value: socket }, children);
+
+      const { result } = renderHook(
+        () => useSelectionActions<TestItem>({ selection, store: {}, t }),
+        { wrapper },
       );
+
       expect(result.current.getTotalCount()).toBe(0);
-    });
-
-    test('should return 0 for empty store', () => {
-      const { result } = setup({}, [], 0);
-      expect(result.current.getTotalCount()).toBe(0);
-    });
-  });
-
-  describe('selectedItems in normal mode', () => {
-    test('should return items that are in selectedIds', () => {
-      const { result } = setup(
-        { selectedIds: new Set([1, 3, 5]), selectAllMode: false },
-        createItems(5),
-      );
-      expect(result.current.selectedItems).toHaveLength(3);
-      expect(result.current.selectedItems.map((i) => i.id)).toEqual([1, 3, 5]);
-    });
-
-    test('should return empty array when no items are selected', () => {
-      const { result } = setup(
-        { selectedIds: new Set(), selectAllMode: false },
-        createItems(5),
-      );
-      expect(result.current.selectedItems).toEqual([]);
-    });
-
-    test('should handle selectedIds that do not exist in store', () => {
-      const { result } = setup(
-        { selectedIds: new Set([1, 99, 100]), selectAllMode: false },
-        createItems(3),
-      );
-      expect(result.current.selectedItems).toHaveLength(1);
-      expect(result.current.selectedItems[0].id).toBe(1);
-    });
-  });
-
-  describe('selectedItems in select-all mode', () => {
-    test('should return all items when no exclusions', () => {
-      const { result } = setup(
-        { selectAllMode: true, excludedIds: new Set() },
-        createItems(5),
-      );
-      expect(result.current.selectedItems).toHaveLength(5);
-    });
-
-    test('should exclude items in excludedIds', () => {
-      const { result } = setup(
-        { selectAllMode: true, excludedIds: new Set([2, 4]) },
-        createItems(5),
-      );
-      expect(result.current.selectedItems).toHaveLength(3);
-      expect(result.current.selectedItems.map((i) => i.id)).toEqual([1, 3, 5]);
-    });
-
-    test('should return empty array when all items are excluded', () => {
-      const { result } = setup(
-        { selectAllMode: true, excludedIds: new Set([1, 2, 3]) },
-        createItems(3),
-      );
-      expect(result.current.selectedItems).toEqual([]);
-    });
-  });
-
-  describe('handleBulkDownload', () => {
-    test('should set showBulkDownload to true', () => {
-      const { result } = setup();
-      expect(result.current.showBulkDownload).toBe(false);
-      act(() => {
-        result.current.handleBulkDownload();
-      });
-      expect(result.current.showBulkDownload).toBe(true);
-    });
-
-    test('should remain true when called multiple times', () => {
-      const { result } = setup();
-      act(() => {
-        result.current.handleBulkDownload();
-        result.current.handleBulkDownload();
-      });
-      expect(result.current.showBulkDownload).toBe(true);
-    });
-  });
-
-  describe('handleBulkDownloadClose', () => {
-    test('should set showBulkDownload to false', () => {
-      const { result } = setup();
-      act(() => {
-        result.current.handleBulkDownload();
-      });
-      expect(result.current.showBulkDownload).toBe(true);
-      act(() => {
-        result.current.handleBulkDownloadClose();
-      });
-      expect(result.current.showBulkDownload).toBe(false);
-    });
-
-    test('should not call clearSelection (selection cleared only after download success)', () => {
-      const clearSelection = vi.fn();
-      const { result } = setup({ clearSelection });
-      act(() => {
-        result.current.handleBulkDownloadClose();
-      });
-      // Selection is NOT cleared on close - only after successful download via onDownloadComplete
-      expect(clearSelection).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('reactivity', () => {
-    test('should update selectedItems when selection changes', () => {
-      const items = createItems(5);
-      const store = createMockStore(items);
-
-      const { result, rerender } = renderHook(
-        ({ selection }) => useSelectionActions<TestItem>({ selection, store }),
-        {
-          initialProps: {
-            // Pass items to populate the cache
-            selection: createMockSelection({
-              selectedIds: new Set([1]),
-              selectAllMode: false,
-            }, items),
-          },
-        }
-      );
-
-      expect(result.current.selectedItems).toHaveLength(1);
-
-      // Update selection by rerendering with new props
-      rerender({
-        // Pass items to populate the cache for new selection
-        selection: createMockSelection({
-          selectedIds: new Set([1, 2, 3]),
-          selectAllMode: false,
-        }, items),
-      });
-
-      expect(result.current.selectedItems).toHaveLength(3);
-    });
-
-    test('should update selectedItems when store items change', () => {
-      // Start with 5 items in cache (simulates user having selected items that may leave sparse store)
-      const allItems = createItems(5);
-      const selection = createMockSelection({
-        selectedIds: new Set([1, 2, 3]),
-        selectAllMode: false,
-      }, allItems);
-
-      // Store initially only has 2 items loaded (sparse store scenario)
-      let items = createItems(2);
-      let store = createMockStore(items);
-
-      const { result, rerender } = renderHook(
-        ({ store }) => useSelectionActions<TestItem>({ selection, store }),
-        { initialProps: { store } }
-      );
-
-      // Cache has all 3 items, so we get 3 (cache persists items even when not in store)
-      expect(result.current.selectedItems).toHaveLength(3);
-
-      // Add more items to store (doesn't affect cache-based lookup in normal mode)
-      items = createItems(5);
-      store = createMockStore(items);
-      rerender({ store });
-
-      expect(result.current.selectedItems).toHaveLength(3);
-    });
-  });
-
-  describe('edge cases', () => {
-    test('should handle empty store items array', () => {
-      const { result } = setup(
-        { selectedIds: new Set([1, 2, 3]), selectAllMode: false },
-        [],
-      );
-      expect(result.current.selectedItems).toEqual([]);
-    });
-
-    test('should handle undefined store items', () => {
-      const selection = createMockSelection({
-        selectedIds: new Set([1, 2, 3]),
-        selectAllMode: false,
-      });
-      const store = { rowCount: 10 };
-      const { result } = renderHook(() =>
-        useSelectionActions<TestItem>({ selection, store })
-      );
-      expect(result.current.selectedItems).toEqual([]);
-    });
-
-    test('should filter out null/undefined items', () => {
-      const items = [
-        { id: 1, name: 'Item 1' },
-        null as unknown as TestItem,
-        { id: 3, name: 'Item 3' },
-        undefined as unknown as TestItem,
-      ];
-      const { result } = setup(
-        { selectAllMode: true, excludedIds: new Set() },
-        items,
-      );
-      expect(result.current.selectedItems).toHaveLength(2);
-      expect(result.current.selectedItems.map((i) => i.id)).toEqual([1, 3]);
     });
   });
 });

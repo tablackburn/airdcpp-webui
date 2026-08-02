@@ -5,23 +5,19 @@ import * as React from 'react';
 import { SelectionHeaderCell } from '../SelectionHeaderCell';
 import TableSelectionContext from '../SelectionContext';
 import { TableSelectionContextValue } from '../types';
+import { MAX_SELECT_ALL_ITEMS } from '../constants';
 
-// Ensure DOM is cleaned up after each test
 afterEach(() => {
   cleanup();
 });
 
-// Helper to create mock selection context
 const createMockContext = (
-  overrides: Partial<TableSelectionContextValue> = {}
+  overrides: Partial<TableSelectionContextValue> = {},
 ): TableSelectionContextValue => ({
   selectedIds: new Set<number>(),
-  excludedIds: new Set<number>(),
-  selectAllMode: false,
   selectedCount: 0,
   toggleItem: vi.fn(),
   selectItems: vi.fn(),
-  setSelectAllMode: vi.fn(),
   clearSelection: vi.fn(),
   isSelected: vi.fn(() => false),
   getCachedItemData: vi.fn(() => undefined),
@@ -29,239 +25,191 @@ const createMockContext = (
   ...overrides,
 });
 
-// Helper to render with context
-const renderWithContext = (
+interface RenderOptions {
+  totalCount?: number;
+  onSelectAll?: () => void;
+  isSelectingAll?: boolean;
+}
+
+// Minimal translator: resolves to the supplied default value
+const t = ((key: string, options?: string | { defaultValue?: string; count?: number }) => {
+  if (typeof options === 'string') {
+    return options;
+  }
+  const defaultValue = options?.defaultValue ?? key;
+  return options?.count === undefined
+    ? defaultValue
+    : defaultValue.replace('{{count}}', String(options.count));
+}) as any;
+
+const renderCell = (
   context: TableSelectionContextValue,
-  totalCountGetter: () => number = () => 10
+  { totalCount = 10, onSelectAll = vi.fn(), isSelectingAll = false }: RenderOptions = {},
 ) => {
-  return render(
+  render(
     <TableSelectionContext.Provider value={context}>
-      <SelectionHeaderCell totalCountGetter={totalCountGetter} />
-    </TableSelectionContext.Provider>
+      <SelectionHeaderCell
+        totalCountGetter={() => totalCount}
+        onSelectAll={onSelectAll}
+        isSelectingAll={isSelectingAll}
+        t={t}
+      />
+    </TableSelectionContext.Provider>,
   );
+  return { onSelectAll };
 };
 
+// Convenience: a selection of n items
+const selectionOf = (n: number) =>
+  createMockContext({
+    selectedIds: new Set(Array.from({ length: n }, (_, i) => i + 1)),
+    selectedCount: n,
+  });
+
 describe('SelectionHeaderCell', () => {
-  describe('checkbox checked state (allSelected)', () => {
-    test('should be unchecked when no items are selected', () => {
+  describe('checked state', () => {
+    test('is unchecked when nothing is selected', () => {
+      renderCell(createMockContext(), { totalCount: 10 });
+      expect(screen.getByRole('checkbox')).not.toBeChecked();
+    });
+
+    test('is checked when every row is selected', () => {
+      renderCell(selectionOf(10), { totalCount: 10 });
+      expect(screen.getByRole('checkbox')).toBeChecked();
+    });
+
+    test('is unchecked when only some rows are selected', () => {
+      renderCell(selectionOf(4), { totalCount: 10 });
+      expect(screen.getByRole('checkbox')).not.toBeChecked();
+    });
+
+    test('is unchecked for an empty view', () => {
+      renderCell(createMockContext(), { totalCount: 0 });
+      expect(screen.getByRole('checkbox')).not.toBeChecked();
+    });
+  });
+
+  describe('indeterminate state', () => {
+    test('is indeterminate when some but not all rows are selected', () => {
+      renderCell(selectionOf(4), { totalCount: 10 });
+      expect((screen.getByRole('checkbox') as HTMLInputElement).indeterminate).toBe(true);
+    });
+
+    test('is not indeterminate when nothing is selected', () => {
+      renderCell(createMockContext(), { totalCount: 10 });
+      expect((screen.getByRole('checkbox') as HTMLInputElement).indeterminate).toBe(false);
+    });
+
+    test('is not indeterminate when everything is selected', () => {
+      renderCell(selectionOf(10), { totalCount: 10 });
+      expect((screen.getByRole('checkbox') as HTMLInputElement).indeterminate).toBe(false);
+    });
+  });
+
+  describe(`cap of ${MAX_SELECT_ALL_ITEMS} items`, () => {
+    test(`is enabled at exactly ${MAX_SELECT_ALL_ITEMS} rows`, () => {
+      renderCell(createMockContext(), { totalCount: MAX_SELECT_ALL_ITEMS });
+      expect(screen.getByRole('checkbox')).toBeEnabled();
+    });
+
+    test(`is disabled at ${MAX_SELECT_ALL_ITEMS + 1} rows`, () => {
+      renderCell(createMockContext(), { totalCount: MAX_SELECT_ALL_ITEMS + 1 });
+      expect(screen.getByRole('checkbox')).toBeDisabled();
+    });
+
+    test('explains itself via a tooltip when disabled by the cap', () => {
+      renderCell(createMockContext(), { totalCount: MAX_SELECT_ALL_ITEMS + 1 });
+      const title = screen.getByRole('checkbox').getAttribute('title');
+      expect(title).toBeTruthy();
+      expect(title).toContain(String(MAX_SELECT_ALL_ITEMS));
+    });
+
+    test('stays enabled above the cap when rows are already selected, so they can be cleared', () => {
+      renderCell(selectionOf(3), { totalCount: MAX_SELECT_ALL_ITEMS + 1 });
+      expect(screen.getByRole('checkbox')).toBeEnabled();
+    });
+
+    test('is disabled for an empty view', () => {
+      renderCell(createMockContext(), { totalCount: 0 });
+      expect(screen.getByRole('checkbox')).toBeDisabled();
+    });
+  });
+
+  describe('interaction', () => {
+    test('requests select-all when nothing is selected', () => {
+      const onSelectAll = vi.fn();
       const context = createMockContext();
-      renderWithContext(context);
+      renderCell(context, { totalCount: 10, onSelectAll });
 
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).not.toBeChecked();
+      fireEvent.click(screen.getByRole('checkbox'));
+
+      expect(onSelectAll).toHaveBeenCalledTimes(1);
+      expect(context.clearSelection).not.toHaveBeenCalled();
     });
 
-    test('should be checked when selectAllMode with no exclusions', () => {
-      const context = createMockContext({
-        selectAllMode: true,
-        excludedIds: new Set(),
-      });
-      renderWithContext(context);
+    test('clears the selection when rows are already selected', () => {
+      const onSelectAll = vi.fn();
+      const context = selectionOf(10);
+      renderCell(context, { totalCount: 10, onSelectAll });
 
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).toBeChecked();
+      fireEvent.click(screen.getByRole('checkbox'));
+
+      expect(context.clearSelection).toHaveBeenCalledTimes(1);
+      expect(onSelectAll).not.toHaveBeenCalled();
     });
 
-    test('should be unchecked when selectAllMode but all items excluded', () => {
-      const context = createMockContext({
-        selectAllMode: true,
-        excludedIds: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-      });
-      renderWithContext(context, () => 10);
+    test('clears a partial selection rather than extending it', () => {
+      const onSelectAll = vi.fn();
+      const context = selectionOf(4);
+      renderCell(context, { totalCount: 10, onSelectAll });
 
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).not.toBeChecked();
+      fireEvent.click(screen.getByRole('checkbox'));
+
+      expect(context.clearSelection).toHaveBeenCalledTimes(1);
+      expect(onSelectAll).not.toHaveBeenCalled();
     });
 
-    test('should be checked when all items manually selected (not selectAllMode)', () => {
-      const context = createMockContext({
-        selectAllMode: false,
-        selectedIds: new Set([1, 2, 3, 4, 5]),
-      });
-      renderWithContext(context, () => 5);
+    test('does nothing when clicked above the cap with nothing selected', () => {
+      const onSelectAll = vi.fn();
+      const context = createMockContext();
+      renderCell(context, { totalCount: MAX_SELECT_ALL_ITEMS + 1, onSelectAll });
 
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).toBeChecked();
-    });
+      fireEvent.click(screen.getByRole('checkbox'));
 
-    test('should be unchecked when only some items manually selected', () => {
-      const context = createMockContext({
-        selectAllMode: false,
-        selectedIds: new Set([1, 2]),
-      });
-      renderWithContext(context, () => 10);
-
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).not.toBeChecked();
-    });
-
-    test('should be unchecked when totalCount is 0', () => {
-      const context = createMockContext({
-        selectAllMode: true,
-        excludedIds: new Set(),
-      });
-      renderWithContext(context, () => 0);
-
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).not.toBeChecked();
+      expect(onSelectAll).not.toHaveBeenCalled();
+      expect(context.clearSelection).not.toHaveBeenCalled();
     });
   });
 
-  describe('indeterminate state (someSelected)', () => {
-    test('should be indeterminate when some items manually selected', () => {
-      const context = createMockContext({
-        selectAllMode: false,
-        selectedIds: new Set([1, 2, 3]),
-      });
-      renderWithContext(context, () => 10);
-
-      const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
-      expect(checkbox.indeterminate).toBe(true);
+  describe('while selecting all', () => {
+    test('is disabled during the fetch', () => {
+      renderCell(createMockContext(), { totalCount: 10, isSelectingAll: true });
+      expect(screen.getByRole('checkbox')).toBeDisabled();
     });
 
-    test('should be indeterminate in selectAllMode with some exclusions', () => {
-      const context = createMockContext({
-        selectAllMode: true,
-        excludedIds: new Set([1, 2]),
-      });
-      renderWithContext(context, () => 10);
-
-      const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
-      expect(checkbox.indeterminate).toBe(true);
-    });
-
-    test('should not be indeterminate when no items selected', () => {
-      const context = createMockContext({
-        selectAllMode: false,
-        selectedIds: new Set(),
-      });
-      renderWithContext(context, () => 10);
-
-      const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
-      expect(checkbox.indeterminate).toBe(false);
-    });
-
-    test('should not be indeterminate when all items selected', () => {
-      const context = createMockContext({
-        selectAllMode: true,
-        excludedIds: new Set(),
-      });
-      renderWithContext(context, () => 10);
-
-      const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
-      expect(checkbox.indeterminate).toBe(false);
-    });
-
-    test('should not be indeterminate when all manually selected', () => {
-      const context = createMockContext({
-        selectAllMode: false,
-        selectedIds: new Set([1, 2, 3, 4, 5]),
-      });
-      renderWithContext(context, () => 5);
-
-      const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
-      expect(checkbox.indeterminate).toBe(false);
-    });
-  });
-
-  describe('handleChange (click behavior)', () => {
-    test('should enter selectAllMode when clicked and not in selectAllMode', () => {
-      const setSelectAllMode = vi.fn();
-      const context = createMockContext({
-        selectAllMode: false,
-        setSelectAllMode,
-      });
-      renderWithContext(context, () => 100);
-
-      const checkbox = screen.getByRole('checkbox');
-      fireEvent.click(checkbox);
-
-      expect(setSelectAllMode).toHaveBeenCalledWith(true, 100);
-    });
-
-    test('should exit selectAllMode when clicked and in selectAllMode', () => {
-      const setSelectAllMode = vi.fn();
-      const context = createMockContext({
-        selectAllMode: true,
-        setSelectAllMode,
-      });
-      renderWithContext(context);
-
-      const checkbox = screen.getByRole('checkbox');
-      fireEvent.click(checkbox);
-
-      expect(setSelectAllMode).toHaveBeenCalledWith(false, 0);
-    });
-
-    test('should use fresh totalCount when entering selectAllMode', () => {
-      const setSelectAllMode = vi.fn();
-      const context = createMockContext({
-        selectAllMode: false,
-        setSelectAllMode,
+    test('does not fire again while the fetch is in flight', () => {
+      const onSelectAll = vi.fn();
+      renderCell(createMockContext(), {
+        totalCount: 10,
+        onSelectAll,
+        isSelectingAll: true,
       });
 
-      let count = 50;
-      const dynamicCountGetter = () => count;
-      renderWithContext(context, dynamicCountGetter);
+      fireEvent.click(screen.getByRole('checkbox'));
 
-      // Simulate count changing before click
-      count = 75;
-
-      const checkbox = screen.getByRole('checkbox');
-      fireEvent.click(checkbox);
-
-      // Should use the current count (75), not the initial render count (50)
-      expect(setSelectAllMode).toHaveBeenCalledWith(true, 75);
+      expect(onSelectAll).not.toHaveBeenCalled();
     });
   });
 
   describe('accessibility', () => {
-    test('should have "Select all" aria-label when not all selected', () => {
-      const context = createMockContext();
-      renderWithContext(context);
-
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).toHaveAttribute('aria-label', 'Select all');
+    test('labels the action when nothing is selected', () => {
+      renderCell(createMockContext(), { totalCount: 10 });
+      expect(screen.getByRole('checkbox')).toHaveAccessibleName('Select all');
     });
 
-    test('should have "Deselect all" aria-label when all selected', () => {
-      const context = createMockContext({
-        selectAllMode: true,
-        excludedIds: new Set(),
-      });
-      renderWithContext(context);
-
-      const checkbox = screen.getByRole('checkbox');
-      expect(checkbox).toHaveAttribute('aria-label', 'Deselect all');
-    });
-  });
-
-  describe('edge cases', () => {
-    test('should handle selectAllMode with exclusions equal to totalCount', () => {
-      // All items excluded = nothing selected
-      const context = createMockContext({
-        selectAllMode: true,
-        excludedIds: new Set([1, 2, 3]),
-      });
-      renderWithContext(context, () => 3);
-
-      const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
-      expect(checkbox).not.toBeChecked();
-      // Not indeterminate because excludedIds.size (3) is not < totalCount (3)
-      expect(checkbox.indeterminate).toBe(false);
-    });
-
-    test('should handle empty state correctly', () => {
-      const context = createMockContext({
-        selectAllMode: false,
-        selectedIds: new Set(),
-        excludedIds: new Set(),
-      });
-      renderWithContext(context, () => 0);
-
-      const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
-      expect(checkbox).not.toBeChecked();
-      expect(checkbox.indeterminate).toBe(false);
+    test('labels the action when rows are selected', () => {
+      renderCell(selectionOf(10), { totalCount: 10 });
+      expect(screen.getByRole('checkbox')).toHaveAccessibleName('Deselect all');
     });
   });
 });

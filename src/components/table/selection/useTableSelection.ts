@@ -10,136 +10,73 @@ export interface UseTableSelectionOptions {
 }
 
 export const useTableSelection = (
-  options: UseTableSelectionOptions = {}
+  options: UseTableSelectionOptions = {},
 ): TableSelectionContextValue => {
   const { entityId, viewId } = options;
   const [selectedIds, setSelectedIds] = useState<Set<API.IdType>>(new Set());
-  // When true, all items are selected except those in excludedIds
-  const [isSelectAllMode, setIsSelectAllMode] = useState(false);
-  // Items explicitly deselected while in select-all mode
-  const [excludedIds, setExcludedIds] = useState<Set<API.IdType>>(new Set());
-  // Track total count for calculating selected count in select-all mode
-  const [totalCount, setTotalCount] = useState(0);
   // Cache of item data - persists item data even when items leave sparse store
   const itemDataCache = useRef<Map<API.IdType, SelectableItem>>(new Map());
 
   // Clear selection when entity or view changes
   useEffect(() => {
     setSelectedIds(new Set());
-    setIsSelectAllMode(false);
-    setExcludedIds(new Set());
-    setTotalCount(0);
     itemDataCache.current.clear();
   }, [entityId, viewId]);
 
   const toggleItem = useCallback((id: API.IdType, itemData?: SelectableItem) => {
-    if (isSelectAllMode) {
-      // In select-all mode, toggling an item adds/removes it from excluded list
-      setExcludedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) {
-          next.delete(id);
-          // Re-adding to selection - cache the item data if provided
-          if (itemData) {
-            itemDataCache.current.set(id, itemData);
-          }
-        } else {
-          next.add(id);
-          // Removing from selection - remove from cache
-          itemDataCache.current.delete(id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        itemDataCache.current.delete(id);
+      } else {
+        next.add(id);
+        if (itemData) {
+          itemDataCache.current.set(id, itemData);
         }
-        return next;
-      });
-    } else {
-      // Normal mode: toggle in selectedIds
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) {
-          next.delete(id);
-          // Removing from selection - remove from cache
-          itemDataCache.current.delete(id);
-        } else {
-          next.add(id);
-          // Adding to selection - cache the item data if provided
-          if (itemData) {
-            itemDataCache.current.set(id, itemData);
-          }
-        }
-        return next;
-      });
-    }
-  }, [isSelectAllMode]);
-
-  const setSelectAllMode = useCallback((enabled: boolean, newTotalCount: number) => {
-    setTotalCount(newTotalCount);
-    if (enabled) {
-      // Enter select-all mode
-      setIsSelectAllMode(true);
-      setExcludedIds(new Set());
-      setSelectedIds(new Set());
-      // Clear cache - in select-all mode we use store items directly
-      itemDataCache.current.clear();
-    } else {
-      // Exit select-all mode (clear all)
-      setIsSelectAllMode(false);
-      setExcludedIds(new Set());
-      setSelectedIds(new Set());
-      itemDataCache.current.clear();
-    }
+      }
+      return next;
+    });
   }, []);
 
-  const selectItems = useCallback((ids: API.IdType[]) => {
-    setIsSelectAllMode(false);
-    setExcludedIds(new Set());
-    setSelectedIds(new Set(ids));
-    // Clear cache - these IDs don't have item data
+  // Replace the selection with the supplied items, caching their data so that
+  // it survives the items leaving the sparse view store
+  const selectItems = useCallback((items: SelectableItem[]) => {
     itemDataCache.current.clear();
+    items.forEach((item) => {
+      if (item) {
+        itemDataCache.current.set(item.id, item);
+      }
+    });
+    setSelectedIds(new Set(items.filter((item) => !!item).map((item) => item.id)));
   }, []);
 
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
-    setIsSelectAllMode(false);
-    setExcludedIds(new Set());
     itemDataCache.current.clear();
   }, []);
 
-  // Get cached item data by ID
-  const getCachedItemData = useCallback(<T extends SelectableItem>(id: API.IdType): T | undefined => {
-    return itemDataCache.current.get(id) as T | undefined;
-  }, []);
+  const getCachedItemData = useCallback(
+    <T extends SelectableItem>(id: API.IdType): T | undefined => {
+      return itemDataCache.current.get(id) as T | undefined;
+    },
+    [],
+  );
 
-  // Get the entire item data cache
-  const getItemDataCache = useCallback(<T extends SelectableItem>(): Map<API.IdType, T> => {
+  const getItemDataCache = useCallback(<T extends SelectableItem>(): Map<
+    API.IdType,
+    T
+  > => {
     return itemDataCache.current as Map<API.IdType, T>;
   }, []);
 
-  const isSelected = useCallback(
-    (id: API.IdType) => {
-      if (isSelectAllMode) {
-        // In select-all mode, item is selected unless explicitly excluded
-        return !excludedIds.has(id);
-      }
-      return selectedIds.has(id);
-    },
-    [isSelectAllMode, excludedIds, selectedIds]
-  );
-
-  // Calculate selected count based on mode
-  const selectedCount = useMemo(() => {
-    if (isSelectAllMode) {
-      return Math.max(0, totalCount - excludedIds.size);
-    }
-    return selectedIds.size;
-  }, [isSelectAllMode, totalCount, excludedIds.size, selectedIds.size]);
+  const isSelected = useCallback((id: API.IdType) => selectedIds.has(id), [selectedIds]);
 
   return useMemo(
     () => ({
       selectedIds,
-      selectedCount,
-      selectAllMode: isSelectAllMode,
-      excludedIds,
+      selectedCount: selectedIds.size,
       toggleItem,
-      setSelectAllMode,
       selectItems,
       clearSelection,
       isSelected,
@@ -148,16 +85,12 @@ export const useTableSelection = (
     }),
     [
       selectedIds,
-      selectedCount,
-      isSelectAllMode,
-      excludedIds,
       toggleItem,
-      setSelectAllMode,
       selectItems,
       clearSelection,
       isSelected,
       getCachedItemData,
       getItemDataCache,
-    ]
+    ],
   );
 };

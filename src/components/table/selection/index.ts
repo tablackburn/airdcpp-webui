@@ -1,4 +1,5 @@
 export * from './types';
+export * from './constants';
 export * from './useTableSelection';
 export * from './useSelectionActions';
 export * from './SelectionContext';
