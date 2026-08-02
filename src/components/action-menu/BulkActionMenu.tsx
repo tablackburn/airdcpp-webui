@@ -25,9 +25,6 @@ export interface BulkActionMenuProps<
   button?: boolean;
   // Additional menu items to append (e.g., "Clear selection")
   additionalItems?: React.ReactNode;
-  // Optional callback when action is clicked
-  // Return true to prevent default action execution
-  onActionClick?: (actionId: string, items: ItemDataT[]) => boolean;
 }
 
 interface BulkActionMenuContentProps<

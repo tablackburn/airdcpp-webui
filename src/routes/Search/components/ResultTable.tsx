@@ -21,7 +21,6 @@ import { UserFileActions } from '@/actions/ui/user/UserActions';
 import Message from '@/components/semantic/Message';
 
 import DownloadDialog from '@/components/download/DownloadDialog';
-import BulkDownloadDialog from '@/components/download/BulkDownloadDialog';
 import { RowWrapperCellChildProps } from '@/components/table/RowWrapperCell';
 
 import * as API from '@/types/api';
@@ -128,20 +127,12 @@ const ResultTable: React.FC<ResultTableProps> = ({
   instance,
 }) => {
   const selection = useTableSelection({ entityId: instance.id });
-  const {
-    showBulkDownload,
-    selectedItems,
-    getTotalCount,
-    selectAll,
-    isSelectingAll,
-    handleBulkDownloadClose,
-    handleBulkActionClick,
-  } = useSelectionActions<API.GroupedSearchResult>({
-    selection,
-    store: SearchViewStore,
-    t: searchT.t,
-  });
-  const { clearSelection } = selection;
+  const { selectedItems, getTotalCount, selectAll, isSelectingAll } =
+    useSelectionActions<API.GroupedSearchResult>({
+      selection,
+      store: SearchViewStore,
+      t: searchT.t,
+    });
   const { translate } = searchT;
 
   const rowClassNameGetter = useCallback((rowData: API.GroupedSearchResult) => {
@@ -223,7 +214,6 @@ const ResultTable: React.FC<ResultTableProps> = ({
               items={selectedItems}
               entity={instance}
               t={searchT.t}
-              onActionClick={handleBulkActionClick}
             />
             <ActionMenu
               className="top left pointing"
@@ -313,16 +303,6 @@ const ResultTable: React.FC<ResultTableProps> = ({
         sessionItem={instance}
       />
       <ResultDialog searchT={searchT} instance={instance} />
-      {showBulkDownload && (
-        <BulkDownloadDialog
-          items={selectedItems}
-          downloadHandler={searchDownloadHandler}
-          userGetter={resultUserGetter}
-          sessionItem={instance}
-          onClose={handleBulkDownloadClose}
-          onDownloadComplete={clearSelection}
-        />
-      )}
     </TableSelectionProvider>
   );
 };

@@ -32,11 +32,6 @@ interface UseSelectionActionsResult<T> {
   isSelectingAll: boolean;
   // Fetch every row in the view from the API and select them
   selectAll: () => Promise<void>;
-
-  // Bulk download dialog plumbing; replaced by the routed DownloadDialog
-  showBulkDownload: boolean;
-  handleBulkDownloadClose: () => void;
-  handleBulkActionClick: (actionId: string) => boolean;
 }
 
 export const useSelectionActions = <T extends { id: API.IdType }>({
@@ -93,29 +88,11 @@ export const useSelectionActions = <T extends { id: API.IdType }>({
     return result;
   }, [selection.selectedIds, selection.getItemDataCache]);
 
-  const [showBulkDownload, setShowBulkDownload] = useState(false);
-
-  const handleBulkDownloadClose = useCallback(() => {
-    setShowBulkDownload(false);
-  }, []);
-
-  // Download actions open the bulk dialog instead of running per item
-  const handleBulkActionClick = useCallback((actionId: string) => {
-    if (actionId === 'download' || actionId === 'downloadTo') {
-      setShowBulkDownload(true);
-      return true; // Prevent default handler
-    }
-    return false;
-  }, []);
-
   return {
     selectedItems,
     getTotalCount,
     canSelectAll,
     isSelectingAll,
     selectAll,
-    showBulkDownload,
-    handleBulkDownloadClose,
-    handleBulkActionClick,
   };
 };

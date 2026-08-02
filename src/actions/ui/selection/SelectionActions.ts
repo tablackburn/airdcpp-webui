@@ -1,40 +1,43 @@
 import IconConstants from '@/constants/IconConstants';
 
+import { DOWNLOAD_SELECTION_ID } from '@/components/download/DownloadDialog';
+
 import * as API from '@/types/api';
 import * as UI from '@/types/ui';
 
-// Bulk download action - triggers dialog via onActionClick callback
-export const BulkDownloadAction: UI.ActionDefinition<any, any> = {
-  id: 'download',
-  displayName: 'Download',
-  access: API.AccessEnum.DOWNLOAD,
-  icon: IconConstants.DOWNLOAD,
-  handler: () => {
-    // Handler is intentionally empty - action is intercepted by onActionClick
-    // which opens BulkDownloadDialog
-  },
-  bulk: {
-    enabled: true,
-  },
+interface SelectableItemData {
+  id: API.IdType;
+}
+
+// Opens the regular download dialog for every selected item. The ids travel in
+// the location state rather than the URL, as a selection can hold dozens of
+// 39-character search result ids.
+const handleBulkDownloadTo: UI.BulkActionHandler<SelectableItemData, any> = ({
+  itemData: items,
+  navigate,
+}) => {
+  navigate(`download/${DOWNLOAD_SELECTION_ID}`, {
+    state: {
+      downloadItemIds: items.map((item) => String(item.id)),
+    },
+  });
 };
 
-// Bulk download to specific location
-export const BulkDownloadToAction: UI.ActionDefinition<any, any> = {
+export const BulkDownloadToAction: UI.ActionDefinition<SelectableItemData, any> = {
   id: 'downloadTo',
   displayName: 'Download to...',
   access: API.AccessEnum.DOWNLOAD,
   icon: IconConstants.DOWNLOAD_TO,
   handler: () => {
-    // Handler is intentionally empty - action is intercepted by onActionClick
-    // which opens BulkDownloadDialog
+    // Bulk-only action; the bulk handler below is always used
   },
   bulk: {
     enabled: true,
+    handler: handleBulkDownloadTo,
   },
 };
 
-const SelectionActions: UI.ActionListType<any, any> = {
-  download: BulkDownloadAction,
+const SelectionActions: UI.ActionListType<SelectableItemData, any> = {
   downloadTo: BulkDownloadToAction,
 };
 
@@ -42,7 +45,7 @@ export const SelectionActionModule = {
   moduleId: UI.Modules.COMMON,
 };
 
-export const SelectionActionMenu: UI.ModuleActions<any, any> = {
+export const SelectionActionMenu: UI.ModuleActions<SelectableItemData, any> = {
   moduleData: SelectionActionModule,
   actions: SelectionActions,
 };

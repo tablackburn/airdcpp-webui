@@ -18,9 +18,6 @@ export interface BulkActionMenuDefinition<
   entity?: EntityT;
   // Optional: only show these action IDs
   ids?: string[];
-  // Optional callback when action is clicked
-  // Return true to prevent default action execution
-  onActionClick?: (actionId: string, items: ItemDataT[]) => boolean;
 }
 
 export interface BulkActionMenuItem {
@@ -43,7 +40,7 @@ export const useBulkActionMenuItems = <
 
   const getBulkMenuItems = useCallback(
     (onClickAction: BulkActionClickHandler<ItemDataT, EntityT>): BulkActionMenuItem[] => {
-      const { actions: moduleActions, items, entity, ids, onActionClick } = props;
+      const { actions: moduleActions, items, entity, ids } = props;
       const menuItems: BulkActionMenuItem[] = [];
 
       // Iterate through actions and filter to bulk-enabled ones
@@ -69,12 +66,9 @@ export const useBulkActionMenuItems = <
           id: actionId,
           item: {
             onClick: () => {
-              // Allow parent to intercept action (e.g., for dialog handling)
-              if (onActionClick?.(actionId, items)) {
-                return; // Parent handled the action
-              }
-
-              // Default: execute action via BulkActionHandlerDecorator
+              // Executed via BulkActionHandlerDecorator, which prefers the
+              // action's bulk handler and otherwise runs the single-item
+              // handler for each item
               onClickAction({
                 action,
                 items,

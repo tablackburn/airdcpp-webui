@@ -30,12 +30,10 @@ import { FilelistItemActionMenu } from '@/actions/ui/filelist';
 import { useSessionStore } from '@/context/SessionStoreContext';
 import LinkButton from '@/components/semantic/LinkButton';
 import { noMouseFocusProps } from '@/utils/BrowserUtils';
-import BulkDownloadDialog from '@/components/download/BulkDownloadDialog';
 
 import {
-  useTableSelection,
   useSelectionActions,
-  TableSelectionProvider,
+  useTableSelectionContext,
   SelectionCheckboxCell,
   SelectionHeaderCell,
   SelectionFooterBar,
@@ -91,24 +89,14 @@ const FilelistItemTable: React.FC<ListBrowserProps> = ({
   onClickDirectory,
   ...other
 }) => {
-  const selection = useTableSelection({
-    entityId: filelist.id,
-    viewId: filelist.location!.path,
-  });
-  const {
-    showBulkDownload,
-    selectedItems,
-    getTotalCount,
-    selectAll,
-    isSelectingAll,
-    handleBulkDownloadClose,
-    handleBulkActionClick,
-  } = useSelectionActions<API.FilelistItem>({
-    selection,
-    store: FilelistViewStore,
-    t: sessionT.t,
-  });
-  const { clearSelection } = selection;
+  // Provided by ListBrowser, which also renders the download dialog
+  const selection = useTableSelectionContext();
+  const { selectedItems, getTotalCount, selectAll, isSelectingAll } =
+    useSelectionActions<API.FilelistItem>({
+      selection,
+      store: FilelistViewStore,
+      t: sessionT.t,
+    });
 
   const rowClassNameGetter = useCallback(
     (rowData: API.FilelistItem) => {
@@ -170,7 +158,7 @@ const FilelistItemTable: React.FC<ListBrowserProps> = ({
 
   const sessionStore = useSessionStore();
   return (
-    <TableSelectionProvider value={selection}>
+    <>
       <VirtualTable
         emptyRowsNodeGetter={emptyRowsNodeGetter}
         rowClassNameGetter={rowClassNameGetter}
@@ -189,7 +177,6 @@ const FilelistItemTable: React.FC<ListBrowserProps> = ({
             items={selectedItems}
             entity={filelist}
             t={sessionT.t}
-            onActionClick={handleBulkActionClick}
           />
         }
       >
@@ -232,17 +219,7 @@ const FilelistItemTable: React.FC<ListBrowserProps> = ({
         />
       </VirtualTable>
       <FilelistItemInfoDialog filelist={filelist} />
-      {showBulkDownload && (
-        <BulkDownloadDialog
-          items={selectedItems}
-          downloadHandler={filelistDownloadHandler}
-          userGetter={() => filelist.user}
-          sessionItem={filelist}
-          onClose={handleBulkDownloadClose}
-          onDownloadComplete={clearSelection}
-        />
-      )}
-    </TableSelectionProvider>
+    </>
   );
 };
 

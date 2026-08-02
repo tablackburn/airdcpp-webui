@@ -24,9 +24,6 @@ export interface SelectionFooterBarProps<
   actionIds?: string[];
   // Translation function
   t: UI.TranslateF;
-  // Optional callback when action is clicked (for custom handling like dialogs)
-  // Return true to prevent default action execution
-  onActionClick?: (actionId: string, items: ItemDataT[]) => boolean;
 }
 
 export const SelectionFooterBar = <
@@ -38,7 +35,6 @@ export const SelectionFooterBar = <
   entity,
   actionIds,
   t,
-  onActionClick,
 }: SelectionFooterBarProps<ItemDataT, EntityT>) => {
   const { selectedCount, clearSelection } = useTableSelectionContext();
 
@@ -73,7 +69,6 @@ export const SelectionFooterBar = <
           items={items}
           entity={entity}
           ids={actionIds}
-          onActionClick={onActionClick}
           additionalItems={
             <MenuItemLink onClick={handleClearClick} icon={IconConstants.CLOSE}>
               {t('clearSelection', 'Clear selection')}
