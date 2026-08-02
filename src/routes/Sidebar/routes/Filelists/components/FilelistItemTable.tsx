@@ -176,6 +176,7 @@ const FilelistItemTable: React.FC<ListBrowserProps> = ({
         textFilterProps={{
           autoFocus: true,
         }}
+        customFilter={FilterOptionsButton}
         footerData={
           <SelectionFooterBar
             actions={SelectionActionMenu}
@@ -183,9 +184,7 @@ const FilelistItemTable: React.FC<ListBrowserProps> = ({
             entity={filelist}
             t={sessionT.t}
             onActionClick={handleBulkActionClick}
-          >
-            <FilterOptionsButton store={FilelistViewStore} />
-          </SelectionFooterBar>
+          />
         }
       >
         <Column

@@ -24,8 +24,6 @@ export interface SelectionFooterBarProps<
   actionIds?: string[];
   // Translation function
   t: UI.TranslateF;
-  // Children (e.g., FilterOptionsButton) to render in the bar
-  children?: React.ReactNode;
   // Optional callback when action is clicked (for custom handling like dialogs)
   // Return true to prevent default action execution
   onActionClick?: (actionId: string, items: ItemDataT[]) => boolean;
@@ -40,50 +38,49 @@ export const SelectionFooterBar = <
   entity,
   actionIds,
   t,
-  children,
   onActionClick,
 }: SelectionFooterBarProps<ItemDataT, EntityT>) => {
   const { selectedCount, clearSelection } = useTableSelectionContext();
-
-  const hasSelection = selectedCount > 0;
 
   const handleClearClick = () => {
     clearSelection();
   };
 
+  // Nothing selected: render nothing rather than an empty bar in the table footer
+  if (selectedCount === 0) {
+    return null;
+  }
+
   return (
-    <div className={`selection-footer-bar ${hasSelection ? 'has-selection' : ''}`}>
-      <div className="selection-left">{children}</div>
-      {hasSelection && (
-        <div className="selection-right">
-          <BulkActionMenu
-            className="selection-dropdown mini primary"
-            button={true}
-            caption={
-              <>
-                <Icon icon={IconConstants.DOWNLOAD} />
-                <span className="selection-count">
-                  {t('selectedCount', {
-                    defaultValue: '{{count}} selected',
-                    count: selectedCount,
-                  })}
-                </span>
-              </>
-            }
-            triggerIcon={IconConstants.EXPAND}
-            actions={actions}
-            items={items}
-            entity={entity}
-            ids={actionIds}
-            onActionClick={onActionClick}
-            additionalItems={
-              <MenuItemLink onClick={handleClearClick} icon={IconConstants.CLOSE}>
-                {t('clearSelection', 'Clear selection')}
-              </MenuItemLink>
-            }
-          />
-        </div>
-      )}
+    <div className="selection-footer-bar">
+      <div className="selection-right">
+        <BulkActionMenu
+          className="selection-dropdown mini primary"
+          button={true}
+          caption={
+            <>
+              <Icon icon={IconConstants.DOWNLOAD} />
+              <span className="selection-count">
+                {t('selectedCount', {
+                  defaultValue: '{{count}} selected',
+                  count: selectedCount,
+                })}
+              </span>
+            </>
+          }
+          triggerIcon={IconConstants.EXPAND}
+          actions={actions}
+          items={items}
+          entity={entity}
+          ids={actionIds}
+          onActionClick={onActionClick}
+          additionalItems={
+            <MenuItemLink onClick={handleClearClick} icon={IconConstants.CLOSE}>
+              {t('clearSelection', 'Clear selection')}
+            </MenuItemLink>
+          }
+        />
+      </div>
     </div>
   );
 };

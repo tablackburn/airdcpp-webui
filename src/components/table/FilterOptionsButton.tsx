@@ -14,7 +14,7 @@ import Icon from '@/components/semantic/Icon';
 import IconConstants from '@/constants/IconConstants';
 import { useTranslation } from 'react-i18next';
 
-import './DupeFilterToggles.css';
+import './FilterOptionsButton.css';
 
 // Build regex pattern to exclude dupes based on toggles
 // Dupe IDs: share_partial, share_full, queue_partial, queue_full,

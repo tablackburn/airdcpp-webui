@@ -209,6 +209,7 @@ const ResultTable: React.FC<ResultTableProps> = ({
         }}
         entityId={instance.id}
         moduleId={UI.Modules.SEARCH}
+        customFilter={FilterOptionsButton}
         footerData={
           <>
             <SelectionFooterBar
@@ -217,9 +218,7 @@ const ResultTable: React.FC<ResultTableProps> = ({
               entity={instance}
               t={searchT.t}
               onActionClick={handleBulkActionClick}
-            >
-              <FilterOptionsButton store={SearchViewStore} />
-            </SelectionFooterBar>
+            />
             <ActionMenu
               className="top left pointing"
               caption={translate('Actions...')}

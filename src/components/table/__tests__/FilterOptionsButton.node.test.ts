@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { buildFilterPattern } from '../DupeFilterToggles';
+import { buildFilterPattern } from '../FilterOptionsButton';
 
-// Test the regex patterns that DupeFilterToggles generates
+// Test the regex patterns that FilterOptionsButton generates
 // Pattern format: ^(?!.*(share|queue)).*$
-describe('DupeFilterToggles regex patterns', () => {
+describe('FilterOptionsButton regex patterns', () => {
 
   describe('buildFilterPattern', () => {
     test.each([

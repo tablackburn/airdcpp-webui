@@ -4,26 +4,16 @@
   --selection-highlight-bg: #e8f4fd;
 }
 
-/* Selection footer bar - unified container */
+/* Selection footer bar - only rendered while items are selected */
 .selection-footer-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 4px 8px;
   gap: 12px;
   flex-wrap: wrap;
   min-height: 36px;
-}
-
-.selection-footer-bar.has-selection {
   background-color: var(--selection-highlight-bg);
   border-radius: 4px;
-}
-
-.selection-footer-bar .selection-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .selection-footer-bar .selection-right {
