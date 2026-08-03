@@ -44,6 +44,7 @@ export const showBulkAction = <
 >(
   action: UI.ActionDefinition<ItemDataT, EntityT>,
   items: ItemDataT[],
+  entity: EntityT,
   session: UI.AuthenticatedSession,
 ): boolean => {
   // Must have bulk enabled
@@ -63,14 +64,12 @@ export const showBulkAction = <
 
   // Check bulk filter if present
   if (action.bulk.filter) {
-    return action.bulk.filter({ itemData: items, entity: undefined as EntityT });
+    return action.bulk.filter({ itemData: items, entity });
   }
 
   // Fallback: all items must pass individual filter
   if (action.filter) {
-    return items.every((item) =>
-      action.filter!({ itemData: item, entity: undefined as EntityT }),
-    );
+    return items.every((item) => action.filter!({ itemData: item, entity }));
   }
 
   return true;

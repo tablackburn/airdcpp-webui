@@ -55,6 +55,9 @@ const BulkActionMenuContent = <
       caption={caption}
       triggerIcon={triggerIcon}
       button={button}
+      // The bar sits at the bottom of the table, so the menu must open upward
+      // regardless of how many actions it happens to contain
+      direction="upward"
     >
       {menuItems.map((menuItem) =>
         menuItem.item ? (
@@ -69,7 +72,8 @@ const BulkActionMenuContent = <
       )}
       {additionalItems && (
         <>
-          <div className="ui divider" />
+          {/* No separator when every action was filtered out for this entity */}
+          {menuItems.some((menuItem) => !!menuItem.item) && <div className="ui divider" />}
           {additionalItems}
         </>
       )}

@@ -58,7 +58,7 @@ export const useBulkActionMenuItems = <
         }
 
         // Check if action supports bulk and passes filters
-        if (!showBulkAction(action, items, session)) {
+        if (!showBulkAction(action, items, entity as EntityT, session)) {
           return;
         }
 
