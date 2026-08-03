@@ -106,7 +106,6 @@ const FilterOptionsButton = memo<TableFilterDecoratorChildProps>(function Filter
       className="filter-options"
       trigger={
         <Button
-          className="mini"
           caption={
             <>
               <Icon icon={IconConstants.FILTER} />
